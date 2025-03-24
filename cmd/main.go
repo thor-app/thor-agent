@@ -17,13 +17,14 @@ import (
 )
 
 type Metrics struct {
+	TenantId    string  `json:"tenantId"`
 	Key         string  `json:"key"`
 	Timestamp   string  `json:"timestamp"`
-	CPUUsage    float64 `json:"cpu_usage_percent"`
-	MemoryUsed  uint64  `json:"memory_used_mb"`
-	MemoryTotal uint64  `json:"memory_total_mb"`
-	DiskUsed    uint64  `json:"disk_used_gb"`
-	DiskTotal   uint64  `json:"disk_total_gb"`
+	CPUUsage    float64 `json:"cpuUsagePercent"`
+	MemoryUsed  uint64  `json:"memoryUsedMb"`
+	MemoryTotal uint64  `json:"memoryTotalMb"`
+	DiskUsed    uint64  `json:"diskUsedGb"`
+	DiskTotal   uint64  `json:"diskTotalGb"`
 }
 
 func main() {
@@ -44,7 +45,14 @@ func main() {
 	header.Set("X-Agent-Key", key)
 
 	url := "ws://localhost:8080/api/v1/public/monitoring"
-	conn, _, err := websocket.DefaultDialer.Dial(url, header)
+	conn, response, err := websocket.DefaultDialer.Dial(url, header)
+
+	tenantId := response.Header.Get("X-TENANT-ID")
+
+	if tenantId == "" {
+		fmt.Println("테넌트가 존재하지 않음", err)
+		return
+	}
 
 	if err != nil {
 		fmt.Println("웹 소켓 연결 실패", err)
@@ -53,7 +61,7 @@ func main() {
 
 	defer conn.Close()
 	for {
-		metrics, err := collectMetrics(key)
+		metrics, err := collectMetrics(tenantId, key)
 		if err != nil {
 			log.Printf("메트릭스 수집 실패: %v", err)
 			continue
@@ -70,7 +78,7 @@ func main() {
 	}
 }
 
-func collectMetrics(key string) ([]byte, error) {
+func collectMetrics(tenantId string, key string) ([]byte, error) {
 	// CPU 사용률
 	cpuPercent, err := cpu.Percent(1*time.Second, false)
 	if err != nil {
@@ -92,6 +100,7 @@ func collectMetrics(key string) ([]byte, error) {
 	}
 
 	metrics := Metrics{
+		TenantId:    tenantId,
 		Key:         key,
 		Timestamp:   time.Now().Format(time.RFC3339),
 		CPUUsage:    cpuPercent[0],
