@@ -37,6 +37,9 @@ type ProcessInfo struct {
 	CPUPercent float64 `json:"cpuPercent"`
 }
 
+var MAX_COUNT = 5
+var currentCount = 0
+
 func main() {
 
 	err := godotenv.Load()
@@ -77,6 +80,7 @@ func main() {
 	}
 
 	defer conn.Close()
+
 	for {
 		metrics, err := collectMetrics(tid, cid, key)
 		if err != nil {
@@ -86,11 +90,24 @@ func main() {
 
 		err = conn.WriteMessage(websocket.TextMessage, metrics)
 		if err != nil {
-			continue
+			for {
+				if MAX_COUNT >= currentCount {
+					conn, response, err = websocket.DefaultDialer.Dial(url, header)
+					if err == nil {
+						currentCount = 0 // 초기화
+						break
+					}
+
+					currentCount++
+
+					fmt.Printf("웹소켓 재연결 실패 CURRENT_COUNT = %d\n", currentCount)
+					time.Sleep(5 * time.Second)
+				}
+			}
 		}
 
 		log.Println("전송 완료:", string(metrics))
-		time.Sleep(5 * time.Second)
+		time.Sleep(1 * time.Second)
 	}
 }
 
