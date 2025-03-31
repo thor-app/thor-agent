@@ -32,9 +32,11 @@ type Metrics struct {
 }
 
 type ProcessInfo struct {
-	Pid        int32   `json:"pid"`
-	Name       string  `json:"name"`
-	CPUPercent float64 `json:"cpuPercent"`
+	Pid         int32   `json:"pid"`
+	Name        string  `json:"name"`
+	CPU         float64 `json:"cpu"`
+	Memory      float32 `json:"memory"`
+	CommandLine string  `json:"commandLine"`
 }
 
 var MAX_COUNT = 5
@@ -105,8 +107,6 @@ func main() {
 				}
 			}
 		}
-
-		log.Println("전송 완료:", string(metrics))
 		time.Sleep(1 * time.Second)
 	}
 }
@@ -132,7 +132,7 @@ func collectMetrics(tid string, cid string, key string) ([]byte, error) {
 		return []byte{}, err
 	}
 
-	processList := getCPUProcess()
+	processList := getProcess()
 
 	metrics := Metrics{
 		TID:         tid,
@@ -155,7 +155,7 @@ func collectMetrics(tid string, cid string, key string) ([]byte, error) {
 	return metricsJSON, nil
 }
 
-func getCPUProcess() []ProcessInfo {
+func getProcess() []ProcessInfo {
 	processes, err := process.Processes()
 	if err != nil {
 		log.Printf("프로세스 목록 조회 실패: %v", err)
@@ -166,21 +166,36 @@ func getCPUProcess() []ProcessInfo {
 
 	for _, p := range processes {
 		name, _ := p.Name()
-		cpuPercent, err := p.CPUPercent()
+
+		cpu, err := p.CPUPercent()
 		if err != nil {
 			continue
 		}
+
+		memory, err := p.MemoryPercent()
+
+		if err != nil {
+			continue
+		}
+
 		processList = append(processList, ProcessInfo{
-			Pid:        p.Pid,
-			Name:       name,
-			CPUPercent: math.Round(cpuPercent*100) / 100,
+			Pid:    p.Pid,
+			Name:   name,
+			CPU:    cpu,
+			Memory: memory,
 		})
+
 	}
 
 	// CPU 사용률 기준으로 내림차순 정렬
 	sort.Slice(processList, func(i, j int) bool {
-		return processList[i].CPUPercent > processList[j].CPUPercent
+		return processList[i].CPU > processList[j].CPU
 	})
+
+	for i := 0; i < len(processList); i++ {
+		p, _ := process.NewProcess(processList[i].Pid)
+		processList[i].CommandLine, _ = p.Cmdline()
+	}
 
 	return processList[:5]
 }
